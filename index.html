@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>云贵自驾游路线规划</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- 高德地图安全密钥配置 -->
+  <script>
+    window._AMapSecurityConfig = {
+      securityJsCode: 'b051ee99958850e316e99428452d1188',
+    }
+  </script>
+  <!-- 高德地图JS API -->
+  <script src="https://webapi.amap.com/maps?v=2.0&key=d6ec534399a0e4449c0b89b7c7616278"></script>
+  <style>
+    /* 基础样式 - 大字体适合老年人 */
+    html { font-size: 18px; scroll-behavior: smooth; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif; background: linear-gradient(180deg, #667eea 0%, #764ba2 100%); min-height: 100vh; }
+    * { box-sizing: border-box; }
+
+    /* 自定义滚动条 */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.3); border-radius: 2px; }
+
+    /* 卡片动画 */
+    .day-card { transition: all 0.3s ease; }
+    .day-card:active { transform: scale(0.98); }
+
+    /* 导航按钮特效 */
+    .nav-btn {
+      background: linear-gradient(135deg, #00B42A 0%, #00C853 100%);
+      box-shadow: 0 4px 15px rgba(0,180,42,0.4);
+      transition: all 0.2s ease;
+    }
+    .nav-btn:active { transform: scale(0.95); box-shadow: 0 2px 8px rgba(0,180,42,0.4); }
+
+    /* 阶段标签颜色 */
+    .phase-1 { background: linear-gradient(135deg, #FF6B6B, #FF8E53); }
+    .phase-2 { background: linear-gradient(135deg, #4ECDC4, #44A08D); }
+    .phase-3 { background: linear-gradient(135deg, #667eea, #764ba2); }
+    .phase-4 { background: linear-gradient(135deg, #F093FB, #F5576C); }
+
+    /* 当前日期高亮 */
+    .current-day { border: 3px solid #FFD700 !important; box-shadow: 0 0 20px rgba(255,215,0,0.5); }
+
+    /* 抢票提醒闪烁 */
+    @keyframes pulse-alert { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+    .ticket-alert { animation: pulse-alert 1.5s infinite; }
+
+    /* 底部导航固定 */
+    .bottom-nav { backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+
+    /* Tab切换 */
+    .tab-btn.active { background: linear-gradient(135deg, #667eea, #764ba2); color: white; }
+    .tab-btn:not(.active) { background: rgba(255,255,255,0.9); color: #6b7280; }
+
+    /* 地图容器 */
+    #mapContainer { width: 100%; height: 280px; border-radius: 0; }
+
+    /* 驾驶信息突出显示 */
+    .drive-info {
+      background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+      box-shadow: 0 4px 12px rgba(59,130,246,0.3);
+    }
+
+    /* 统计卡片 */
+    .stat-card { background: rgba(255,255,255,0.95); backdrop-filter: blur(10px); }
+
+    /* 地图信息窗体 */
+    .amap-info-content { font-size: 14px; padding: 10px; }
+  </style>
+</head>
+<body class="pb-20">
+
+  <!-- 顶部标题栏 -->
+  <header class="sticky top-0 z-50 bg-white/95 backdrop-blur-sm shadow-lg">
+    <div class="px-4 py-4">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-lg">
+            <i class="fas fa-car text-white text-xl"></i>
+          </div>
+          <div>
+            <h1 class="text-xl font-bold text-gray-800">云贵自驾游</h1>
+            <p class="text-sm text-gray-500">2026年6月7日 - 6月24日 · 18天</p>
+          </div>
+        </div>
+        <button onclick="scrollToToday()" class="px-4 py-2 bg-purple-100 text-purple-600 rounded-full text-sm font-semibold whitespace-nowrap">
+          <i class="fas fa-calendar-day mr-1"></i>今天
+        </button>
+      </div>
+    </div>
+
+    <!-- 进度条 -->
+    <div class="px-4 pb-3">
+      <div class="flex items-center justify-between text-sm text-gray-500 mb-1">
+        <span>行程进度</span>
+        <span id="progressText">行程尚未开始</span>
+      </div>
+      <div class="h-2 bg-gray-200 rounded-full overflow-hidden">
+        <div id="progressBar" class="h-full bg-gradient-to-r from-purple-500 to-pink-500 rounded-full transition-all duration-500" style="width: 0%"></div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ========== 首页地图总览 ========== -->
+  <section class="px-4 py-4">
+    <div class="bg-white rounded-2xl shadow-lg overflow-hidden">
+      <!-- 标题 -->
+      <div class="bg-gradient-to-r from-purple-500 to-pink-500 px-4 py-3">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2 text-white">
+            <i class="fas fa-map-marked-alt text-xl"></i>
+            <span class="font-bold text-lg">全程路线总览</span>
+          </div>
+          <div class="text-white/80 text-sm">约4700公里</div>
+        </div>
+      </div>
+
+      <!-- 高德地图容器 -->
+      <div id="mapContainer"></div>
+
+      <!-- 图例 -->
+      <div class="flex justify-center gap-6 py-3 bg-gray-50 border-t">
+        <div class="flex items-center gap-2">
+          <div class="w-3 h-3 rounded-full bg-green-500"></div>
+          <span class="text-xs text-gray-600">起点</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <div class="w-3 h-3 rounded-full bg-blue-500"></div>
+          <span class="text-xs text-gray-600">城市</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <div class="w-3 h-3 rounded-full bg-amber-500"></div>
+          <span class="text-xs text-gray-600">景点</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <div class="w-3 h-3 rounded-full bg-red-500"></div>
+          <span class="text-xs text-gray-600">终点</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== 行程概况卡片 ========== -->
+  <section class="px-4 pb-2">
+    <div class="grid grid-cols-4 gap-2">
+      <div class="stat-card rounded-xl p-3 text-center shadow">
+        <div class="text-2xl font-bold text-purple-600">18</div>
+        <div class="text-xs text-gray-500">总天数</div>
+      </div>
+      <div class="stat-card rounded-xl p-3 text-center shadow">
+        <div class="text-2xl font-bold text-blue-600">4</div>
+        <div class="text-xs text-gray-500">阶段</div>
+      </div>
+      <div class="stat-card rounded-xl p-3 text-center shadow">
+        <div class="text-2xl font-bold text-green-600">7</div>
+        <div class="text-xs text-gray-500">景点</div>
+      </div>
+      <div class="stat-card rounded-xl p-3 text-center shadow">
+        <div class="text-2xl font-bold text-orange-600">3</div>
+        <div class="text-xs text-gray-500">需抢票</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== 主要途经点 ========== -->
+  <section class="px-4 py-2">
+    <div class="bg-white rounded-2xl shadow-lg p-4">
+      <h3 class="font-bold text-gray-800 mb-3 flex items-center gap-2">
+        <i class="fas fa-route text-purple-500"></i>
+        主要途经城市
+      </h3>
+      <div class="flex flex-wrap gap-2 items-center">
+        <span class="px-3 py-1.5 bg-green-100 text-green-700 rounded-full text-sm font-medium">咸阳</span>
+        <i class="fas fa-chevron-right text-gray-300 text-xs"></i>
+        <span class="px-3 py-1.5 bg-red-100 text-red-700 rounded-full text-sm font-medium">重庆</span>
+        <i class="fas fa-chevron-right text-gray-300 text-xs"></i>
+        <span class="px-3 py-1.5 bg-amber-100 text-amber-700 rounded-full text-sm font-medium">梵净山</span>
+        <i class="fas fa-chevron-right text-gray-300 text-xs"></i>
+        <span class="px-3 py-1.5 bg-green-100 text-green-700 rounded-full text-sm font-medium">荔波</span>
+        <i class="fas fa-chevron-right text-gray-300 text-xs"></i>
+        <span class="px-3 py-1.5 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">黄果树</span>
+        <i class="fas fa-chevron-right text-gray-300 text-xs"></i>
+        <span class="px-3 py-1.5 bg-indigo-100 text-indigo-700 rounded-full text-sm font-medium">昆明</span>
+        <i class="fas fa-chevron-right text-gray-300 text-xs"></i>
+        <span class="px-3 py-1.5 bg-pink-100 text-pink-700 rounded-full text-sm font-medium">大理</span>
+        <i class="fas fa-chevron-right text-gray-300 text-xs"></i>
+        <span class="px-3 py-1.5 bg-purple-100 text-purple-700 rounded-full text-sm font-medium">丽江</span>
+        <i class="fas fa-chevron-right text-gray-300 text-xs"></i>
+        <span class="px-3 py-1.5 bg-yellow-100 text-yellow-700 rounded-full text-sm font-medium">西昌</span>
+        <i class="fas fa-chevron-right text-gray-300 text-xs"></i>
+        <span class="px-3 py-1.5 bg-orange-100 text-orange-700 rounded-full text-sm font-medium">成都</span>
+        <i class="fas fa-chevron-right text-gray-300 text-xs"></i>
+        <span class="px-3 py-1.5 bg-cyan-100 text-cyan-700 rounded-full text-sm font-medium">汉中</span>
+        <i class="fas fa-chevron-right text-gray-300 text-xs"></i>
+        <span class="px-3 py-1.5 bg-green-100 text-green-700 rounded-full text-sm font-medium">咸阳</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== Tab切换 ========== -->
+  <section class="px-4 py-2">
+    <div class="flex gap-2">
+      <button onclick="switchTab('list')" id="tabList" class="tab-btn active flex-1 py-2.5 rounded-xl font-semibold text-sm">
+        <i class="fas fa-list-ul mr-1"></i>每日行程
+      </button>
+      <button onclick="switchTab('timeline')" id="tabTimeline" class="tab-btn flex-1 py-2.5 rounded-xl font-semibold text-sm">
+        <i class="fas fa-stream mr-1"></i>时间线
+      </button>
+    </div>
+  </section>
+
+  <!-- ========== 主内容区 - 列表视图 ========== -->
+  <main class="px-4 py-2 space-y-4" id="tripList">
+    <!-- 由JS动态生成 -->
+  </main>
+
+  <!-- ========== 时间线视图 ========== -->
+  <main class="px-4 py-2 hidden" id="tripTimeline">
+    <!-- 由JS动态生成 -->
+  </main>
+
+  <!-- ========== 底部导航栏 ========== -->
+  <nav class="bottom-nav fixed bottom-0 left-0 right-0 bg-white/95 border-t border-gray-200 px-2 py-2 z-50">
+    <div class="flex justify-around">
+      <button onclick="filterPhase(0)" class="flex flex-col items-center px-4 py-2 rounded-xl text-purple-600 bg-purple-50" data-phase="0">
+        <i class="fas fa-list text-lg mb-1"></i>
+        <span class="text-xs font-medium">全部</span>
+      </button>
+      <button onclick="filterPhase(1)" class="flex flex-col items-center px-4 py-2 rounded-xl text-gray-500" data-phase="1">
+        <i class="fas fa-flag-checkered text-lg mb-1"></i>
+        <span class="text-xs font-medium">进驻</span>
+      </button>
+      <button onclick="filterPhase(2)" class="flex flex-col items-center px-4 py-2 rounded-xl text-gray-500" data-phase="2">
+        <i class="fas fa-mountain text-lg mb-1"></i>
+        <span class="text-xs font-medium">贵州</span>
+      </button>
+      <button onclick="filterPhase(3)" class="flex flex-col items-center px-4 py-2 rounded-xl text-gray-500" data-phase="3">
+        <i class="fas fa-sun text-lg mb-1"></i>
+        <span class="text-xs font-medium">云南</span>
+      </button>
+      <button onclick="filterPhase(4)" class="flex flex-col items-center px-4 py-2 rounded-xl text-gray-500" data-phase="4">
+        <i class="fas fa-home text-lg mb-1"></i>
+        <span class="text-xs font-medium">返程</span>
+      </button>
+    </div>
+  </nav>
+
+  <script>
+    // ========== 行程数据 ==========
+    const tripData = [
+      // 第一阶段：穿越进驻
+      {
+        day: 1, date: "6月7日", dateFull: "2026-06-07", phase: 1, phaseName: "第一阶段·进驻",
+        from: "咸阳", to: "重庆", distance: "630", duration: "7.5",
+        highlight: "长途赶路，专心驾驶，抵达后吃火锅休息",
+        hotel: "重庆",
+        coords: { from: [108.707449, 34.349372], to: [106.551557, 29.563491] },
+        isRest: false, needTicket: false
+      },
+      {
+        day: 2, date: "6月8日", dateFull: "2026-06-08", phase: 1, phaseName: "第一阶段·进驻",
+        from: "重庆", to: "重庆", distance: "", duration: "",
+        highlight: "重庆休整日，睡到自然醒，喝茶闲逛",
+        hotel: "重庆",
+        coords: { from: [106.551557, 29.563491], to: [106.551557, 29.563491] },
+        isRest: true, needTicket: false,
+        ticketAlert: "🚨 今天必须抢6月10日梵净山门票！"
+      },
+      {
+        day: 3, date: "6月9日", dateFull: "2026-06-09", phase: 1, phaseName: "第一阶段·进驻",
+        from: "重庆", to: "梵净山", distance: "420", duration: "5",
+        highlight: "直奔铜仁梵净山，傍晚抵达休息",
+        hotel: "梵净山",
+        coords: { from: [106.551557, 29.563491], to: [108.781256, 27.918465] },
+        isRest: false, needTicket: false
+      },
+      // 第二阶段：贵州山水
+      {
+        day: 4, date: "6月10日", dateFull: "2026-06-10", phase: 2, phaseName: "第二阶段·贵州",
+        from: "梵净山", to: "梵净山", distance: "", duration: "",
+        highlight: "全天游览梵净山（红云金顶、蘑菇石）",
+        hotel: "梵净山",
+        coords: { from: [108.781256, 27.918465], to: [108.781256, 27.918465] },
+        isRest: true, needTicket: true, ticketName: "梵净山门票"
+      },
+      {
+        day: 5, date: "6月11日", dateFull: "2026-06-11", phase: 2, phaseName: "第二阶段·贵州",
+        from: "梵净山", to: "荔波", distance: "385", duration: "5",
+        highlight: "一路向南，傍晚尝樟江烤鱼",
+        hotel: "荔波",
+        coords: { from: [108.781256, 27.918465], to: [107.861111, 25.401944] },
+        isRest: false, needTicket: false
+      },
+      {
+        day: 6, date: "6月12日", dateFull: "2026-06-12", phase: 2, phaseName: "第二阶段·贵州",
+        from: "荔波", to: "荔波", distance: "", duration: "",
+        highlight: "荔波小七孔全天游，西门进东门出（省体力）",
+        hotel: "荔波",
+        coords: { from: [107.861111, 25.401944], to: [107.861111, 25.401944] },
+        isRest: true, needTicket: true, ticketName: "小七孔门票"
+      },
+      {
+        day: 7, date: "6月13日", dateFull: "2026-06-13", phase: 2, phaseName: "第二阶段·贵州",
+        from: "荔波", to: "黄果树", distance: "390", duration: "4.5",
+        highlight: "移动日，前往黄果树镇入住",
+        hotel: "黄果树",
+        coords: { from: [107.861111, 25.401944], to: [105.6779, 25.9881] },
+        isRest: false, needTicket: false,
+        ticketAlert: "🚨 今天必须抢6月14日黄果树门票！"
+      },
+      {
+        day: 8, date: "6月14日", dateFull: "2026-06-14", phase: 2, phaseName: "第二阶段·贵州",
+        from: "黄果树", to: "黄果树", distance: "", duration: "",
+        highlight: "丰水期震撼！大瀑布、天星桥、陡坡塘",
+        hotel: "黄果树",
+        coords: { from: [105.6779, 25.9881], to: [105.6779, 25.9881] },
+        isRest: true, needTicket: true, ticketName: "黄果树门票"
+      },
+      // 第三阶段：彩云之南
+      {
+        day: 9, date: "6月15日", dateFull: "2026-06-15", phase: 3, phaseName: "第三阶段·云南",
+        from: "黄果树", to: "昆明", distance: "330", duration: "4",
+        highlight: "走沪昆高速，晚上南屏街觅食或逛斗南花市",
+        hotel: "昆明",
+        coords: { from: [105.6779, 25.9881], to: [102.832891, 24.880095] },
+        isRest: false, needTicket: false
+      },
+      {
+        day: 10, date: "6月16日", dateFull: "2026-06-16", phase: 3, phaseName: "第三阶段·云南",
+        from: "昆明", to: "昆明", distance: "", duration: "",
+        highlight: "滇池海埂公园、翠湖公园游览",
+        hotel: "昆明",
+        coords: { from: [102.832891, 24.880095], to: [102.832891, 24.880095] },
+        isRest: true, needTicket: false
+      },
+      {
+        day: 11, date: "6月17日", dateFull: "2026-06-17", phase: 3, phaseName: "第三阶段·云南",
+        from: "昆明", to: "大理", distance: "320", duration: "4",
+        highlight: "下午抵达，漫步大理古城，逛人民路",
+        hotel: "大理",
+        coords: { from: [102.832891, 24.880095], to: [100.267670, 25.586426] },
+        isRest: false, needTicket: false
+      },
+      {
+        day: 12, date: "6月18日", dateFull: "2026-06-18", phase: 3, phaseName: "第三阶段·云南",
+        from: "大理", to: "大理", distance: "", duration: "",
+        highlight: "环洱海一日游：龙龛码头→喜洲→双廊→理想邦",
+        hotel: "大理",
+        coords: { from: [100.267670, 25.586426], to: [100.267670, 25.586426] },
+        isRest: true, needTicket: false
+      },
+      {
+        day: 13, date: "6月19日", dateFull: "2026-06-19", phase: 3, phaseName: "第三阶段·云南",
+        from: "大理", to: "丽江", distance: "180", duration: "2.5",
+        highlight: "下午逛丽江古城（四方街、木府、万古楼）",
+        hotel: "丽江",
+        coords: { from: [100.267670, 25.586426], to: [100.229728, 26.858308] },
+        isRest: false, needTicket: false,
+        ticketAlert: "🚨 今晚20:00抢玉龙雪山大索道票！最难抢！"
+      },
+      {
+        day: 14, date: "6月20日", dateFull: "2026-06-20", phase: 3, phaseName: "第三阶段·云南",
+        from: "丽江", to: "玉龙雪山", distance: "35", duration: "1",
+        highlight: "冰川公园大索道 + 蓝月谷",
+        hotel: "丽江",
+        coords: { from: [100.229728, 26.858308], to: [100.179138, 27.104123] },
+        isRest: false, needTicket: true, ticketName: "玉龙雪山大索道票"
+      },
+      // 第四阶段：北上返陕
+      {
+        day: 15, date: "6月21日", dateFull: "2026-06-21", phase: 4, phaseName: "第四阶段·返程",
+        from: "丽江", to: "西昌", distance: "455", duration: "7",
+        highlight: "走蓉丽高速北上，晚上吃火盆烧烤",
+        hotel: "西昌",
+        coords: { from: [100.229728, 26.858308], to: [102.264069, 27.889613] },
+        isRest: false, needTicket: false
+      },
+      {
+        day: 16, date: "6月22日", dateFull: "2026-06-22", phase: 4, phaseName: "第四阶段·返程",
+        from: "西昌", to: "成都", distance: "450", duration: "6.5",
+        highlight: "上午逛邛海湿地，傍晚到成都吃火锅",
+        hotel: "成都",
+        coords: { from: [102.264069, 27.889613], to: [104.065735, 30.659462] },
+        isRest: false, needTicket: false
+      },
+      {
+        day: 17, date: "6月23日", dateFull: "2026-06-23", phase: 4, phaseName: "第四阶段·返程",
+        from: "成都", to: "汉中", distance: "450", duration: "6",
+        highlight: "穿越秦巴山区，晚上吃热面皮、赏汉江夜景",
+        hotel: "汉中",
+        coords: { from: [104.065735, 30.659462], to: [107.023162, 33.067658] },
+        isRest: false, needTicket: false
+      },
+      {
+        day: 18, date: "6月24日", dateFull: "2026-06-24", phase: 4, phaseName: "第四阶段·返程",
+        from: "汉中", to: "咸阳", distance: "350", duration: "4.5",
+        highlight: "穿越秦岭，下午回到温馨的家 🏠",
+        hotel: "咸阳",
+        coords: { from: [107.023162, 33.067658], to: [108.707449, 34.349372] },
+        isRest: false, needTicket: false, isLast: true
+      }
+    ];
+
+    // ========== 主要城市坐标（用于地图标记）==========
+    const mainCities = [
+      { name: "咸阳", coords: [108.707449, 34.349372], type: "start" },
+      { name: "重庆", coords: [106.551557, 29.563491], type: "city" },
+      { name: "梵净山", coords: [108.781256, 27.918465], type: "scenic" },
+      { name: "荔波", coords: [107.861111, 25.401944], type: "scenic" },
+      { name: "黄果树", coords: [105.6779, 25.9881], type: "scenic" },
+      { name: "昆明", coords: [102.832891, 24.880095], type: "city" },
+      { name: "大理", coords: [100.267670, 25.586426], type: "scenic" },
+      { name: "丽江", coords: [100.229728, 26.858308], type: "scenic" },
+      { name: "西昌", coords: [102.264069, 27.889613], type: "city" },
+      { name: "成都", coords: [104.065735, 30.659462], type: "city" },
+      { name: "汉中", coords: [107.023162, 33.067658], type: "city" }
+    ];
+
+    // ========== 路线坐标点 ==========
+    const routePath = [
+      [108.707449, 34.349372], // 咸阳
+      [106.551557, 29.563491], // 重庆
+      [108.781256, 27.918465], // 梵净山
+      [107.861111, 25.401944], // 荔波
+      [105.6779, 25.9881],     // 黄果树
+      [102.832891, 24.880095], // 昆明
+      [100.267670, 25.586426], // 大理
+      [100.229728, 26.858308], // 丽江
+      [100.179138, 27.104123], // 玉龙雪山
+      [102.264069, 27.889613], // 西昌
+      [104.065735, 30.659462], // 成都
+      [107.023162, 33.067658], // 汉中
+      [108.707449, 34.349372]  // 咸阳
+    ];
+
+    // ========== 初始化高德地图 ==========
+    let map = null;
+    function initMap() {
+      try {
+        map = new AMap.Map('mapContainer', {
+          zoom: 6,
+          center: [104.5, 28],
+          mapStyle: 'amap://styles/whitesmoke'
+        });
+
+        // 绘制路线
+        const polyline = new AMap.Polyline({
+          path: routePath,
+          strokeColor: '#667eea',
+          strokeWeight: 5,
+          strokeOpacity: 0.9,
+          strokeStyle: 'solid',
+          lineJoin: 'round',
+          showDir: true
+        });
+        map.add(polyline);
+
+        // 添加城市标记
+        mainCities.forEach((city, index) => {
+          let markerColor = '#3b82f6'; // 默认蓝色
+          let markerSize = 'small';
+
+          if (city.type === 'start') {
+            markerColor = '#22c55e';
+            markerSize = 'large';
+          } else if (city.type === 'scenic') {
+            markerColor = '#f59e0b';
+          }
+
+          // 创建标记
+          const marker = new AMap.Marker({
+            position: city.coords,
+            content: `<div style="
+              background: ${markerColor};
+              color: white;
+              width: ${markerSize === 'large' ? '28px' : '22px'};
+              height: ${markerSize === 'large' ? '28px' : '22px'};
+              border-radius: 50%;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              font-weight: bold;
+              font-size: 11px;
+              box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+              border: 2px solid white;
+            ">${index + 1}</div>`,
+            offset: new AMap.Pixel(-14, -14)
+          });
+          map.add(marker);
+
+          // 添加文字标签
+          const label = new AMap.Text({
+            text: city.name,
+            position: city.coords,
+            offset: new AMap.Pixel(0, -30),
+            style: {
+              'background': 'rgba(0,0,0,0.6)',
+              'border': 'none',
+              'color': 'white',
+              'font-size': '12px',
+              'padding': '2px 6px',
+              'border-radius': '4px'
+            }
+          });
+          map.add(label);
+        });
+
+        // 终点标记（咸阳）
+        const endMarker = new AMap.Marker({
+          position: [108.707449, 34.349372],
+          content: `<div style="
+            background: #ef4444;
+            color: white;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            border: 2px solid white;
+          ">终</div>`,
+          offset: new AMap.Pixel(-14, -14)
+        });
+        map.add(endMarker);
+
+      } catch (e) {
+        console.error('地图加载失败:', e);
+        document.getElementById('mapContainer').innerHTML = `
+          <div class="h-full bg-gradient-to-br from-purple-100 to-pink-100 flex items-center justify-center">
+            <div class="text-center p-4">
+              <i class="fas fa-map text-4xl text-purple-400 mb-2"></i>
+              <p class="text-gray-500 text-sm">地图加载中...</p>
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    // ========== 渲染行程列表 ==========
+    function renderTripList(filterPhase = 0) {
+      const container = document.getElementById('tripList');
+      container.innerHTML = '';
+
+      const today = new Date();
+      const todayStr = today.toISOString().split('T')[0];
+
+      tripData.forEach((trip, index) => {
+        // 过滤阶段
+        if (filterPhase !== 0 && trip.phase !== filterPhase) return;
+
+        const isToday = trip.dateFull === todayStr;
+        const isPast = trip.dateFull < todayStr;
+        const hasDrive = trip.distance && trip.duration;
+
+        // 阶段分隔标题
+        if (index === 0 || tripData[index - 1].phase !== trip.phase) {
+          const phaseHeader = document.createElement('div');
+          phaseHeader.className = 'flex items-center gap-3 mt-2 mb-2';
+          phaseHeader.innerHTML = `
+            <div class="phase-${trip.phase} text-white text-sm font-bold px-4 py-2 rounded-full shadow-md">
+              ${trip.phaseName}
+            </div>
+            <div class="flex-1 h-px bg-white/30"></div>
+          `;
+          container.appendChild(phaseHeader);
+        }
+
+        const card = document.createElement('div');
+        card.className = `day-card bg-white rounded-2xl shadow-lg overflow-hidden ${isToday ? 'current-day' : ''} ${isPast ? 'opacity-60' : ''}`;
+        card.id = `day-${trip.day}`;
+        card.setAttribute('data-phase', trip.phase);
+
+        const fromCoords = trip.coords.from.join(',');
+        const toCoords = trip.coords.to.join(',');
+
+        card.innerHTML = `
+          <!-- 卡片头部 -->
+          <div class="bg-gradient-to-r from-purple-500 to-pink-500 px-4 py-3 text-white">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center font-bold text-lg">
+                  ${trip.day}
+                </div>
+                <div>
+                  <div class="font-bold text-lg">Day ${trip.day}</div>
+                  <div class="text-white/80 text-sm">${trip.date}</div>
+                </div>
+              </div>
+              <div class="flex items-center gap-2">
+                ${isToday ? '<span class="bg-yellow-400 text-yellow-900 px-3 py-1 rounded-full text-xs font-bold">今天</span>' : ''}
+                ${trip.isRest ? '<span class="bg-white/20 px-3 py-1 rounded-full text-xs">休整日</span>' : ''}
+              </div>
+            </div>
+          </div>
+
+          <!-- 抢票提醒 -->
+          ${trip.ticketAlert ? `
+            <div class="ticket-alert bg-red-50 border-l-4 border-red-500 px-4 py-3">
+              <div class="flex items-center gap-2 text-red-600 font-bold">
+                <i class="fas fa-exclamation-triangle"></i>
+                <span class="text-sm">${trip.ticketAlert}</span>
+              </div>
+            </div>
+          ` : ''}
+
+          <!-- 行程内容 -->
+          <div class="p-4">
+            <!-- 起终点 -->
+            <div class="flex items-center gap-3 mb-3">
+              <div class="flex-1">
+                <div class="flex items-center gap-2">
+                  <i class="fas fa-circle text-green-500 text-xs"></i>
+                  <span class="font-bold text-gray-800 text-lg">${trip.from}</span>
+                </div>
+              </div>
+              <div class="flex flex-col items-center px-2">
+                <i class="fas fa-arrow-right text-gray-400"></i>
+              </div>
+              <div class="flex-1 text-right">
+                <div class="flex items-center justify-end gap-2">
+                  <span class="font-bold text-gray-800 text-lg">${trip.to}</span>
+                  <i class="fas fa-map-marker-alt text-red-500"></i>
+                </div>
+              </div>
+            </div>
+
+            <!-- 驾驶信息突出显示 -->
+            ${hasDrive ? `
+              <div class="drive-info rounded-xl p-4 mb-3 text-white">
+                <div class="flex items-center justify-center gap-8">
+                  <div class="text-center">
+                    <div class="text-3xl font-bold">${trip.distance}</div>
+                    <div class="text-sm opacity-80">公里</div>
+                  </div>
+                  <div class="text-2xl opacity-60">|</div>
+                  <div class="text-center">
+                    <div class="text-3xl font-bold">${trip.duration}</div>
+                    <div class="text-sm opacity-80">小时</div>
+                  </div>
+                </div>
+                <div class="text-center mt-2 text-sm opacity-80">
+                  <i class="fas fa-car mr-1"></i>预计驾驶时间
+                </div>
+              </div>
+            ` : ''}
+
+            <!-- 游玩亮点 -->
+            <div class="bg-purple-50 rounded-xl p-3 mb-3">
+              <div class="flex items-start gap-2">
+                <i class="fas fa-star text-yellow-500 mt-0.5"></i>
+                <span class="text-gray-700">${trip.highlight}</span>
+              </div>
+            </div>
+
+            <!-- 门票标识 -->
+            ${trip.needTicket ? `
+              <div class="bg-green-50 rounded-xl p-3 mb-3 flex items-center gap-2">
+                <i class="fas fa-ticket-alt text-green-600"></i>
+                <span class="text-green-700 font-medium">已预约：${trip.ticketName}</span>
+              </div>
+            ` : ''}
+
+            <!-- 住宿信息 -->
+            <div class="border-t border-gray-100 pt-3 mt-3">
+              <div class="flex items-center gap-2 text-sm text-gray-500 mb-1">
+                <i class="fas fa-bed text-purple-500"></i>
+                <span>住宿</span>
+              </div>
+              <div class="text-gray-700 font-medium">${trip.hotel}</div>
+            </div>
+
+            <!-- 导航按钮 -->
+            <button onclick="navigateTo('${trip.from}', '${trip.to}', '${fromCoords}', '${toCoords}')"
+                    class="nav-btn w-full mt-4 py-4 rounded-xl text-white font-bold text-lg flex items-center justify-center gap-2">
+              <i class="fas fa-location-arrow"></i>
+              一键导航到${trip.to}
+            </button>
+
+            ${trip.isLast ? `
+              <div class="mt-4 text-center py-4 bg-gradient-to-r from-purple-100 to-pink-100 rounded-xl">
+                <i class="fas fa-flag-checkered text-3xl text-purple-500 mb-2"></i>
+                <div class="font-bold text-purple-700">旅程圆满结束！</div>
+                <div class="text-sm text-purple-500">欢迎回家 🏠</div>
+              </div>
+            ` : ''}
+          </div>
+        `;
+
+        container.appendChild(card);
+      });
+    }
+
+    // ========== 渲染时间线视图 ==========
+    function renderTimeline(filterPhase = 0) {
+      const container = document.getElementById('tripTimeline');
+      container.innerHTML = '';
+
+      const today = new Date();
+      const todayStr = today.toISOString().split('T')[0];
+
+      let html = '<div class="relative">';
+
+      tripData.forEach((trip, index) => {
+        if (filterPhase !== 0 && trip.phase !== filterPhase) return;
+
+        const isToday = trip.dateFull === todayStr;
+        const isPast = trip.dateFull < todayStr;
+        const hasDrive = trip.distance && trip.duration;
+
+        html += `
+          <div class="flex gap-4 mb-4 ${isPast ? 'opacity-60' : ''}" data-phase="${trip.phase}">
+            <!-- 时间线左侧 -->
+            <div class="flex flex-col items-center">
+              <div class="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold shadow-lg
+                ${isToday ? 'bg-yellow-500 ring-4 ring-yellow-200' : `phase-${trip.phase}`}">
+                ${trip.day}
+              </div>
+              ${index < tripData.length - 1 ? '<div class="w-0.5 flex-1 bg-gray-300 mt-2"></div>' : ''}
+            </div>
+
+            <!-- 内容卡片 -->
+            <div class="flex-1 bg-white rounded-xl shadow p-3 ${isToday ? 'ring-2 ring-yellow-400' : ''}">
+              <div class="flex items-center justify-between mb-2">
+                <span class="font-bold text-gray-800">${trip.date}</span>
+                ${hasDrive ? `<span class="text-sm font-bold text-blue-600">${trip.distance}km · ${trip.duration}h</span>` : ''}
+              </div>
+              <div class="font-medium text-gray-700 mb-1">
+                ${trip.from} ${hasDrive ? '→' : ''} ${trip.to}
+              </div>
+              <div class="text-sm text-gray-500">${trip.highlight}</div>
+              ${trip.ticketAlert ? `<div class="text-xs text-red-500 mt-1 font-bold">${trip.ticketAlert}</div>` : ''}
+            </div>
+          </div>
+        `;
+      });
+
+      html += '</div>';
+      container.innerHTML = html;
+    }
+
+    // ========== Tab切换 ==========
+    function switchTab(tab) {
+      const tabList = document.getElementById('tabList');
+      const tabTimeline = document.getElementById('tabTimeline');
+      const tripList = document.getElementById('tripList');
+      const tripTimeline = document.getElementById('tripTimeline');
+
+      if (tab === 'list') {
+        tabList.classList.add('active');
+        tabTimeline.classList.remove('active');
+        tripList.classList.remove('hidden');
+        tripTimeline.classList.add('hidden');
+      } else {
+        tabTimeline.classList.add('active');
+        tabList.classList.remove('active');
+        tripTimeline.classList.remove('hidden');
+        tripList.classList.add('hidden');
+      }
+    }
+
+    // ========== 高德地图导航 ==========
+    function navigateTo(from, to, fromCoords, toCoords) {
+      // 使用高德地图Web版URI
+      const url = `https://uri.amap.com/navigation?from=${fromCoords}&to=${toCoords}&mode=car&policy=1&src=云贵自驾游&coordinate=gaode`;
+
+      // 尝试唤醒高德地图APP
+      const iosUrl = `iosamap://navi?sourceApplication=云贵自驾游&poiname=${encodeURIComponent(to)}&lon=${toCoords.split(',')[0]}&lat=${toCoords.split(',')[1]}&dev=0`;
+      const androidUrl = `androidamap://navi?sourceApplication=云贵自驾游&poiname=${encodeURIComponent(to)}&lon=${toCoords.split(',')[0]}&lat=${toCoords.split(',')[1]}&dev=0`;
+
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      const isAndroid = /Android/.test(navigator.userAgent);
+
+      if (isIOS) {
+        window.location.href = iosUrl;
+        setTimeout(() => { window.open(url, '_blank'); }, 2000);
+      } else if (isAndroid) {
+        window.location.href = androidUrl;
+        setTimeout(() => { window.open(url, '_blank'); }, 2000);
+      } else {
+        window.open(url, '_blank');
+      }
+    }
+
+    // ========== 滚动到今天 ==========
+    function scrollToToday() {
+      const today = new Date();
+      const todayStr = today.toISOString().split('T')[0];
+      const todayTrip = tripData.find(t => t.dateFull === todayStr);
+
+      if (todayTrip) {
+        const element = document.getElementById(`day-${todayTrip.day}`);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          element.classList.add('ring-4', 'ring-yellow-400');
+          setTimeout(() => element.classList.remove('ring-4', 'ring-yellow-400'), 2000);
+        }
+      } else {
+        // 如果不在行程中，滚动到第一个未来日期
+        const futureTrip = tripData.find(t => t.dateFull >= todayStr);
+        if (futureTrip) {
+          const element = document.getElementById(`day-${futureTrip.day}`);
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        } else {
+          alert('当前日期不在行程范围内，行程已结束');
+        }
+      }
+    }
+
+    // ========== 阶段筛选 ==========
+    function filterPhase(phase) {
+      document.querySelectorAll('.bottom-nav button').forEach(btn => {
+        if (parseInt(btn.getAttribute('data-phase')) === phase) {
+          btn.classList.remove('text-gray-500');
+          btn.classList.add('text-purple-600', 'bg-purple-50');
+        } else {
+          btn.classList.remove('text-purple-600', 'bg-purple-50');
+          btn.classList.add('text-gray-500');
+        }
+      });
+
+      renderTripList(phase);
+      renderTimeline(phase);
+    }
+
+    // ========== 更新进度 ==========
+    function updateProgress() {
+      const today = new Date();
+      const todayStr = today.toISOString().split('T')[0];
+      const startDate = tripData[0].dateFull;
+      const endDate = tripData[tripData.length - 1].dateFull;
+
+      const progressText = document.getElementById('progressText');
+      const progressBar = document.getElementById('progressBar');
+
+      if (todayStr < startDate) {
+        // 行程尚未开始
+        const daysUntil = Math.ceil((new Date(startDate) - today) / (1000 * 60 * 60 * 24));
+        progressText.textContent = `行程尚未开始，还有${daysUntil}天出发`;
+        progressBar.style.width = '0%';
+      } else if (todayStr > endDate) {
+        // 行程已结束
+        progressText.textContent = '行程已结束';
+        progressBar.style.width = '100%';
+      } else {
+        // 行程进行中
+        const todayIndex = tripData.findIndex(t => t.dateFull === todayStr);
+        if (todayIndex >= 0) {
+          const progress = ((todayIndex + 1) / tripData.length * 100).toFixed(1);
+          progressText.textContent = `第${todayIndex + 1}天 / 共${tripData.length}天`;
+          progressBar.style.width = `${progress}%`;
+        }
+      }
+    }
+
+    // ========== 初始化 ==========
+    document.addEventListener('DOMContentLoaded', () => {
+      renderTripList();
+      renderTimeline();
+      updateProgress();
+      // 延迟加载地图
+      setTimeout(initMap, 500);
+    });
+  </script>
+</body>
+</html>
